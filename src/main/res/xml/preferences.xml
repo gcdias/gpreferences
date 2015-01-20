@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+				  xmlns:app="http://schemas.android.com/apk/res-auto">
+<pt.gu.gpreferences.ColorListPreference
+	android:key="lpColor"
+	android:title="ListColorPreference Example"
+	android:entries="@array/acolors"
+	android:entryValues="@array/acolorsValues"
+	app:autoSummary="true"
+	app:paletteFillRatio="0.90"
+	app:paletteSize="28dp"/>
+</PreferenceScreen>
