@@ -6,19 +6,18 @@ import android.content.DialogInterface;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.BitmapShader;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.graphics.Shader;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.LayerDrawable;
 import android.preference.ListPreference;
-import android.text.Spannable;
-import android.text.SpannableString;
-import android.text.style.ForegroundColorSpan;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -27,8 +26,6 @@ import android.widget.ListAdapter;
 import android.widget.RadioButton;
 import android.widget.TextView;
 
-import java.util.Arrays;
-
 /**
  * Created by GU on 18-01-2015.
  */
@@ -36,30 +33,29 @@ public class ColorListPreference extends ListPreference {
 
     private CharSequence[] mEntries;
     private CharSequence[] mEntryValues;
-    private CharSequence[] mArrayValues;
-    private String         mSVPattern;
-    private boolean        mSetSummary;
-    private String         mValue;
-    private int            mValueIndex;
-    private int            entryIndex = -1;
-    private Resources      mResources;
-    private Drawable[]     mDrawable;
-    private float          radBitmap;
-    private float          fillRatio;
+    private boolean mSetSummary;
+    private String mValue;
+    private int mValueIndex;
+    private int entryIndex = -1;
+    private Resources mResources;
+    private Drawable[] mDrawable;
+    private float radBitmap;
+    private float fillRatio;
+    private BitmapShader shader;
 
     public ColorListPreference(Context context, AttributeSet attrs) {
         super(context, attrs);
 
         //Attributes
         TypedArray a = context.obtainStyledAttributes(attrs, R.styleable.ColorListPreference);
-        radBitmap    = a.getDimension(R.styleable.ColorListPreference_paletteSize,32);
-        fillRatio    = a.getFloat(R.styleable.ColorListPreference_paletteFillRatio, 0.8f);
-        mSVPattern   = a.getString(R.styleable.ColorListPreference_patternSV);
-        mSetSummary  = a.getBoolean(R.styleable.ColorListPreference_autoSummary,false);
+        radBitmap = a.getDimension(R.styleable.ColorListPreference_paletteSize, 32);
+        fillRatio = a.getFloat(R.styleable.ColorListPreference_paletteFillRatio, 0.8f);
+        mSetSummary = a.getBoolean(R.styleable.ColorListPreference_autoSummary, false);
         a.recycle();
 
         //Fields
         mResources = context.getResources();
+        shader = new BitmapShader(BitmapFactory.decodeResource(mResources, R.drawable.checkerboard), Shader.TileMode.REPEAT, Shader.TileMode.REPEAT);
     }
 
     @Override
@@ -77,7 +73,6 @@ public class ColorListPreference extends ListPreference {
         }
 
         mDrawable = new Drawable[mEntryValues.length];
-        mArrayValues = new String[mEntryValues.length];
         Drawable d;
 
         for (int i = 0; i < mEntryValues.length; i++) {
@@ -91,13 +86,7 @@ public class ColorListPreference extends ListPreference {
 
         ListAdapter adapter = new ArrayAdapter<CharSequence>(getContext(), R.layout.prf_colorlist, mEntries) {
 
-            class ViewHolder {
-                TextView title;
-                RadioButton radioBtn;
-            }
-
             ViewHolder holder;
-
             MyOnClickListener listener = new MyOnClickListener();
 
             public View getView(int position, View convertView, ViewGroup parent) {
@@ -119,11 +108,16 @@ public class ColorListPreference extends ListPreference {
 
                 holder.title.setText(mEntries[position]);
                 holder.title.setTag(position);
-                holder.radioBtn.setChecked(mValueIndex == position);
                 holder.radioBtn.setButtonDrawable(mDrawable[position]);
+                holder.radioBtn.setChecked(mValueIndex == position);
                 holder.radioBtn.setTag(position);
                 return convertView;
 
+            }
+
+            class ViewHolder {
+                TextView title;
+                RadioButton radioBtn;
             }
         };
 
@@ -145,53 +139,38 @@ public class ColorListPreference extends ListPreference {
     }
 
     private Bitmap getBitmapColorIcon(int index) {
-        int w=(int)radBitmap;
-        Bitmap b = Bitmap.createBitmap(w, w, Bitmap.Config.ARGB_8888);
+        Bitmap b = Bitmap.createBitmap((int) radBitmap, (int) radBitmap, Bitmap.Config.ARGB_8888);
+        RectF r = new RectF(radBitmap * (1 - fillRatio), radBitmap * (1 - fillRatio), radBitmap * fillRatio, radBitmap * fillRatio);
+        float rad = radBitmap * fillRatio / 2;
         Canvas c = new Canvas(b);
         Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-        RectF r = new RectF(w * (1-fillRatio), w * (1-fillRatio), w * fillRatio, w * fillRatio);
 
-        if (mSVPattern!=null) {
-            float[] hsv_basecolor = new float[3];
-            int baseColor = Color.parseColor(mEntryValues[index].toString().split(",")[0]);
-            Color.colorToHSV(baseColor, hsv_basecolor);
-            String[] pattern = mSVPattern.toString().split(",");
-            int len = pattern.length;
-            float ang = 360 / len;
-            float pad = 6 * (len - 1) / len;
-            int color, newcolor;
-            float[] hsv_patcolor = new float[3];
-            String s = "";
-            for (int i = 0; i < len; i++) {
-                if (!s.equals("")) s += ",";
-                color = Color.parseColor(pattern[i]);
-                Color.colorToHSV(color, hsv_patcolor);
-                newcolor = Color.HSVToColor(Color.alpha(color), new float[]{hsv_basecolor[0], hsv_patcolor[1], hsv_patcolor[2]});
-                p.setColor(newcolor);
-                s += String.format("#%06X", newcolor);
-                c.drawArc(r, i * ang + pad, ang - pad, true, p);
-            }
-            mArrayValues[index] = s;
-            return b;
+        String[] colors = mEntryValues[index].toString().split(",");
+        int len = colors.length;
+        p.setShader(shader);
+        c.drawArc(r, 0, 360, true, p);
+        p.reset();
+        p.setFlags(Paint.ANTI_ALIAS_FLAG);
+        if (len == 1) {
+            p.setColor(Color.parseColor(colors[0]));
+            c.drawArc(r, 0, 360, true, p);
         } else {
-            String[] colors = mEntryValues[index].toString().split(",");
-            int len = colors.length;
             float ang = 360 / len;
-            float pad = 6*(len-1)/len;
+            //float pad = 6 * (len - 1) / len;
             for (int i = 0; i < len; i++) {
                 p.setColor(Color.parseColor(colors[i]));
-                c.drawArc(r, i * ang+pad, ang-pad, true, p);
+                c.drawArc(r, i * ang, ang, true, p);
             }
-            mArrayValues[index] = mEntryValues[index];
-            return b;
         }
+        return b;
     }
+
 
     @Override
     protected void onDialogClosed(boolean positiveResult) {
         super.onDialogClosed(positiveResult);
         if (entryIndex >= 0 && mEntryValues != null) {
-            String value = mArrayValues[entryIndex].toString();
+            String value = mEntryValues[entryIndex].toString();
             if (callChangeListener(value)) {
                 setValue(value);
             }
@@ -199,7 +178,6 @@ public class ColorListPreference extends ListPreference {
     }
 
     protected void setResult() {
-        //this.getDialog().getButton(DialogInterface.BUTTON_POSITIVE).performClick();
         this.getDialog().dismiss();
     }
 
@@ -220,40 +198,24 @@ public class ColorListPreference extends ListPreference {
         return -1;
     }
 
+    public int[] getSelectedColors() {
+        return null;
+    }
+
     private int getValueIndex() {
         return findIndexOfValue(mValue);
-    }
-
-    public CharSequence[] getArrayValues() {
-        return mArrayValues;
-    }
-
-    public void setArrayValues(CharSequence[] arrayValues) {
-        this.mArrayValues = arrayValues;
     }
 
     private class MyOnClickListener implements View.OnClickListener {
         @Override
         public void onClick(View v) {
             entryIndex = (Integer) v.getTag();
-            ColorListPreference.this.setResult();
-            if (mSetSummary){
-                String header = mEntries[entryIndex].toString()+" ";
-                int start = header.length();
-                String[] scolors = mArrayValues[entryIndex].toString().split(",");
-                Log.e("scolors", String.format("%d", scolors.length));
-                char[] chars = new char[scolors.length];
-                Arrays.fill(chars, '\u25a0');
-                header +=new String(chars);
-                Spannable summary = new SpannableString(header);
-                int color;
-
-                for (int i=0;i<scolors.length;i++){
-                    color = Color.parseColor(scolors[i]);
-                    summary.setSpan(new ForegroundColorSpan(color), start+i, start+i+1, 0);
-                }
-                ColorListPreference.this.setSummary(summary);
+            ColorListPreference.this.setIcon(mDrawable[entryIndex]);
+            if (mSetSummary) {
+                ColorListPreference.this.setSummary(mEntries[entryIndex]);
             }
+            ColorListPreference.this.setResult();
         }
     }
 }
+
